@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html class="has-navbar-fixed-top">
+<head>
+    <meta charset="utf-8">
+<title>天如洗 笙歌起</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+
+<link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/outdated-browser/1.1.5/outdatedbrowser.min.css">
+
+
+
+
+<meta name="description" content="">
+
+
+
+
+
+
+
+
+
+
+<link rel="stylesheet" href="//fonts.googleapis.com/css?family=Ovo|Source+Code+Pro">
+<link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/bulma/0.6.2/css/bulma.min.css">
+
+
+<link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/lightgallery/1.6.8/css/lightgallery.min.css">
+<link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/justifiedGallery/3.6.5/css/justifiedGallery.min.css">
+
+
+<link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/atom-one-light.min.css">
+
+
+<link rel="stylesheet" href="/css/style.css">
+
+
+<script defer src="//use.fontawesome.com/releases/v5.0.8/js/all.js"></script>
+
+
+
+<meta name="generator" content="Hexo 5.4.0"></head>
+<body>
+    
+<nav class="navbar is-transparent is-fixed-top navbar-main" role="navigation" aria-label="main navigation">
+    <div class="container">
+        <div class="navbar-brand">
+            <a class="navbar-item navbar-logo" href="/">
+                
+                <img src="/images/logo.png" alt="" height="28">
+                
+            </a>
+            <div class="navbar-burger">
+                <span></span>
+                <span></span>
+                <span></span>
+            </div>
+        </div>
+        
+        <div class="navbar-menu navbar-end">
+            
+            
+            
+        </div>
+    </div>
+</nav>
+
+    <section class="section">
+    <div class="container">
+    <article class="article content gallery" itemscope itemprop="blogPost">
+    <h1 class="article-title is-size-3 is-size-4-mobile" itemprop="name">
+        
+            
+        
+    </h1>
+    <div class="article-meta columns is-variable is-1 is-multiline is-mobile is-size-7-mobile">
+        <span class="column is-narrow">
+            
+                <time datetime="2021-07-20T05:54:44.902Z" itemprop="datePublished">Jul 20 2021</time>
+            
+        </span>
+        
+        
+        <span class="column is-narrow">
+            
+            
+            4 minutes read (About 637 words)
+        </span>
+        
+    </div>
+    <div class="article-entry is-size-6-mobile" itemprop="articleBody">
+    
+        <html><head></head><body><h1 id="QEMU"><a href="#QEMU" class="headerlink" title="QEMU"></a>QEMU</h1><p><em>QEMU is a generic and open source machine emulator and virtualizer.</em></p>
+<h2 id="Boot-the-Linux"><a href="#Boot-the-Linux" class="headerlink" title="Boot the Linux"></a>Boot the Linux</h2><span id="more"></span>
+
+<ol>
+<li><p>Download the kernel:</p>
+<p><code>git clone https://github.com/torvalds/linux.git linux</code></p>
+</li>
+<li><p>Install the tool-chain:</p>
+<p><code>sudo apt-get install gcc-arm-linux-gnueabi</code></p>
+</li>
+<li><p>Compile the kernel:</p>
+<p><code>make ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- vexpress_defconfig</code></p>
+<p><code>make ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- menuconfig</code></p>
+<p><code>make ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- -j8</code></p>
+<blockquote>
+<p>Tips:</p>
+<p>** <code>qemu-system-arm -machine help</code> can list the support machines</p>
+</blockquote>
+<p>vexpress means: <em>express-a9          ARM Versatile Express for Cortex-A9</em>  and <a target="_blank" rel="noopener" href="http://infocenter.arm.com/help/topic/com.arm.doc.dui0448i/DUI0448I_v2p_ca9_trm.pdf">spec</a> here. We will run Linux on this ARM development board.</p>
+</li>
+<li><p>Install qemu:</p>
+<p><code>sudo apt-get install qemu qemu-system-arm</code></p>
+</li>
+<li><p>Prepare the rootfs</p>
+<p>There are many ways to choose rootfs, e.g. busybox, buildroot and some linux distribution. Here  we use buildroot as an example.</p>
+<p>a. Download the source code from: <a target="_blank" rel="noopener" href="https://buildroot.org/downloads/buildroot-2019.02.2.tar.bz2">https://buildroot.org/downloads/buildroot-2019.02.2.tar.bz2</a></p>
+<p>b. Extra the file and run “make menuconfig”</p>
+<figure class="highlight plaintext hljs"><table><tbody><tr><td class="code"><pre><span class="line">#Set to the proper processor if you use different CPU</span><br><span class="line">Target options ---&gt;</span><br><span class="line">    Target Architecture (ARM (little endian))</span><br><span class="line">    Target Binary Format (ELF)</span><br><span class="line">    Target Architecture Variant (cortex-A9)</span><br><span class="line">    Target ABI (EABI)</span><br><span class="line">    Floating point strategy (Soft float)</span><br><span class="line">    ARM instruction set (ARM)</span><br><span class="line">#I prefer this toolchain rather than buildroot's</span><br><span class="line">Toolchain ---&gt;</span><br><span class="line">    Toolchain type (External toolchain)</span><br><span class="line">    Toolchain (Sourcery CodeBench ARM 2014.05)</span><br><span class="line">    Toolchain origin (Toolchain to be downloaded and installed)</span><br><span class="line">#This is the minimal setting one could use.</span><br><span class="line">System configuration ---&gt;</span><br><span class="line">    Init system (BusyBox)</span><br><span class="line">    /dev management (Dynamic using devtmpfs only)</span><br><span class="line">    [*] Enable root login with password</span><br><span class="line">    (root) Root password</span><br><span class="line">        /bin/sh (busybox' default shell)</span><br><span class="line">#CPIO is more compatible and has readonly property when executing QEMU</span><br><span class="line">Filesystem images ---&gt;</span><br><span class="line">    [*] cpio the root filesystem (for use as an initial RAM filesystem)</span><br></pre></td></tr></tbody></table></figure>
+
+<p>The benefit to use buildroot is easy to deploy lots of tools and packages you want. E.g. dhcpcd, web server, python etc.</p>
+<p>c. Run “make” to build the image</p>
+<p>d. The final result will placed on buildroot/output/images/rootfs.cpio</p>
+</li>
+<li><p>Start the QEMU</p>
+<figure class="highlight plaintext hljs"><table><tbody><tr><td class="code"><pre><span class="line">qemu-system-arm \</span><br><span class="line">-M vexpress-a9 \</span><br><span class="line">-m 1024 \</span><br><span class="line">-smp 4 \</span><br><span class="line">-dtb linux/arch/arm/boot/dts/vexpress-v2p-ca9.dtb \</span><br><span class="line">-kernel linux/arch/arm/boot/zImage \</span><br><span class="line">-nographic \</span><br><span class="line">-append "console=ttyAMA0" \</span><br><span class="line">-initrd ./buildroot-2019.02.2/output/images/rootfs.cpio</span><br></pre></td></tr></tbody></table></figure>
+
+<p>Enjoy the Linux!</p>
+<blockquote>
+<p>Tips:</p>
+<p>** To quit the QEMU, Ctrl + a and x</p>
+</blockquote>
+</li>
+</ol>
+<h2 id="Make-the-network-work"><a href="#Make-the-network-work" class="headerlink" title="Make the network work"></a>Make the network work</h2><p>The network will auto setup when system start. Install one dhcp client in your rootfs then you will get the address from default dhcp server in QEMU. To allow SSH from host, also need to configure a port forward in QEMU, the whole command is:</p>
+<figure class="highlight plaintext hljs"><table><tbody><tr><td class="code"><pre><span class="line">-net user,hostfwd=tcp::10022-:22 -net nic</span><br></pre></td></tr></tbody></table></figure>
+
+<p>See this <a target="_blank" rel="noopener" href="https://wiki.qemu.org/Documentation/Networking">link</a> for detail.</p>
+<h2 id="GDB-with-QEMU"><a href="#GDB-with-QEMU" class="headerlink" title="GDB with QEMU"></a>GDB with QEMU</h2><p>There is a internal gdb-server in QEMU, enable it by pass below option:</p>
+<figure class="highlight plaintext hljs"><table><tbody><tr><td class="code"><pre><span class="line">-s</span><br><span class="line">Shorthand for -gdb tcp::1234, i.e. open a gdbserver on TCP port 1234 (see gdb_usage).</span><br></pre></td></tr></tbody></table></figure>
+
+<p>and also with:</p>
+<figure class="highlight plaintext hljs"><table><tbody><tr><td class="code"><pre><span class="line">-S</span><br><span class="line">Do not start CPU at startup (you must type ’c’ in the monitor).</span><br></pre></td></tr></tbody></table></figure>
+
+<p>Then run the gdb as a normal gdb client in your terminal:</p>
+<figure class="highlight plaintext hljs"><table><tbody><tr><td class="code"><pre><span class="line">gdb-multiarch --tui</span><br><span class="line"></span><br><span class="line">(gdb) file linux/vmlinux</span><br><span class="line">Reading symbols from linux/vmlinux...done.</span><br><span class="line">(gdb) target remote:1234</span><br><span class="line">Remote debugging using :1234</span><br><span class="line">0x60000000 in ?? ()</span><br><span class="line">(gdb)</span><br></pre></td></tr></tbody></table></figure>
+
+<p>Also run gdb in vscode, config the launch.json as below:</p>
+<figure class="highlight plaintext hljs"><table><tbody><tr><td class="code"><pre><span class="line">...</span><br><span class="line">                     "program": "${workspaceFolder}/vmlinux",</span><br><span class="line">                     "miDebuggerPath": "/usr/bin/gdb-multiarch",</span><br><span class="line">                     "miDebuggerServerAddress": "localhost:1234",</span><br><span class="line">...</span><br></pre></td></tr></tbody></table></figure>
+
+<h2 id="Share-folder"><a href="#Share-folder" class="headerlink" title="Share folder"></a>Share folder</h2><p>To make it possible to share file between QEMU guest and host, we could mount a host folder to the QEMU guest by below command:</p>
+<figure class="highlight plaintext hljs"><table><tbody><tr><td class="code"><pre><span class="line">--fsdev local,id=kmod,path=$PWD/mnt,security_model=none -device virtio-9p-device,fsdev=kmod,mount_tag=share</span><br></pre></td></tr></tbody></table></figure>
+
+<p>So mnt folder in current host PWD will map to a share mount point in QEMU guest, then we could mount it to /mnt in QEMU guest system by editing the /etc/fstab like:</p>
+<figure class="highlight plaintext hljs"><table><tbody><tr><td class="code"><pre><span class="line">share           /mnt            9p      trans=virtio  0	0</span><br></pre></td></tr></tbody></table></figure>
+
+<h2 id="Kernel-debug-fs"><a href="#Kernel-debug-fs" class="headerlink" title="Kernel debug fs"></a>Kernel debug fs</h2><p>Add below to /etc/fstab</p>
+<figure class="highlight plaintext hljs"><table><tbody><tr><td class="code"><pre><span class="line">debugfs    /sys/kernel/debug      debugfs  defaults  0 0</span><br></pre></td></tr></tbody></table></figure>
+</body></html>
+    
+    </div>
+    
+    
+    <div class="columns is-mobile is-multiline article-nav">
+        <span class="column is-12-mobile is-half-desktop is-hidden-mobile article-nav-prev">
+            
+        </span>
+        <span class="column is-12-mobile is-half-desktop  article-nav-next">
+            
+            <a href="/2021/07/20/time/"></a>
+            
+        </span>
+    </div>
+    
+</article>
+
+
+
+
+    </div>
+</section>
+    <footer class="footer">
+    <div class="container">
+        <div class="columns content">
+            <div class="column is-narrow has-text-centered">
+                &copy; 2021 Hermes Zhang&nbsp;
+                Powered by <a href="http://hexo.io/" target="_blank">Hexo</a> & <a
+                        target="_blank" rel="noopener" href="http://github.com/ppoffice/hexo-theme-minos">Minos</a>
+            </div>
+            <div class="column is-hidden-mobile"></div>
+
+            
+            
+        </div>
+    </div>
+</footer>
+    <script src="//cdnjs.cloudflare.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/moment.js/2.22.2/moment-with-locales.min.js"></script>
+
+<!-- test if the browser is outdated -->
+<div id="outdated">
+    <h6>Your browser is out-of-date!</h6>
+    <p>Update your browser to view this website correctly. <a id="btnUpdateBrowser" target="_blank" rel="noopener" href="http://outdatedbrowser.com/">Update my browser now </a></p>
+    <p class="last"><a href="#" id="btnCloseUpdateBrowser" title="Close">&times;</a></p>
+</div>
+<script src="//cdnjs.cloudflare.com/ajax/libs/outdated-browser/1.1.5/outdatedbrowser.min.js"></script>
+<script>
+    $(document).ready(function () {
+        // plugin function, place inside DOM ready function
+        outdatedBrowser({
+            bgColor: '#f25648',
+            color: '#ffffff',
+            lowerThan: 'flex'
+        })
+    });
+</script>
+
+<script>
+    window.FontAwesomeConfig = {
+        searchPseudoElements: true
+    }
+    moment.locale("en-AU");
+</script>
+
+
+
+
+<script src="/js/script.js"></script>
+
+
+    
+</body>
+</html>
