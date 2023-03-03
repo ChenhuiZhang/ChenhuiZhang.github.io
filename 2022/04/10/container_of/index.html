@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html class="has-navbar-fixed-top">
+<head>
+    <meta charset="utf-8">
+<title>container_of探究 - 天如洗 笙歌起</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+
+<link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/outdated-browser/1.1.5/outdatedbrowser.min.css">
+
+
+
+
+<meta name="description" content="">
+
+
+
+
+
+
+
+
+
+
+<link rel="stylesheet" href="//fonts.googleapis.com/css?family=Ovo|Source+Code+Pro">
+<link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/bulma/0.6.2/css/bulma.min.css">
+
+
+<link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/lightgallery/1.6.8/css/lightgallery.min.css">
+<link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/justifiedGallery/3.6.5/css/justifiedGallery.min.css">
+
+
+<link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/atom-one-light.min.css">
+
+
+<link rel="stylesheet" href="/css/style.css">
+
+
+<script defer src="//use.fontawesome.com/releases/v5.0.8/js/all.js"></script>
+
+
+
+<meta name="generator" content="Hexo 6.3.0"></head>
+<body>
+    
+<nav class="navbar is-transparent is-fixed-top navbar-main" role="navigation" aria-label="main navigation">
+    <div class="container">
+        <div class="navbar-brand">
+            <a class="navbar-item navbar-logo" href="/">
+                
+                <img src="/images/logo.png" alt="" height="28">
+                
+            </a>
+            <div class="navbar-burger">
+                <span></span>
+                <span></span>
+                <span></span>
+            </div>
+        </div>
+        
+        <div class="navbar-menu navbar-end">
+            
+            
+            
+        </div>
+    </div>
+</nav>
+
+    <section class="section">
+    <div class="container">
+    <article class="article content gallery" itemscope itemprop="blogPost">
+    <h1 class="article-title is-size-3 is-size-4-mobile" itemprop="name">
+        
+            container_of探究
+        
+    </h1>
+    <div class="article-meta columns is-variable is-1 is-multiline is-mobile is-size-7-mobile">
+        <span class="column is-narrow">
+            
+                <time datetime="2022-04-10T04:42:27.000Z" itemprop="datePublished">Apr 10 2022</time>
+            
+        </span>
+        
+        
+        <span class="column is-narrow">
+            
+            
+            6 minutes read (About 955 words)
+        </span>
+        
+    </div>
+    <div class="article-entry is-size-6-mobile" itemprop="articleBody">
+    
+        <html><head></head><body><p>From linux 4.14</p>
+<span id="more"></span>
+
+<figure class="highlight plaintext hljs"><table><tbody><tr><td class="code"><pre><span class="line">/**</span><br><span class="line"> * container_of - cast a member of a structure out to the containing structure</span><br><span class="line"> * @ptr:        the pointer to the member.</span><br><span class="line"> * @type:       the type of the container struct this is embedded in.</span><br><span class="line"> * @member:     the name of the member within the struct.</span><br><span class="line"> *</span><br><span class="line"> */</span><br><span class="line">#define container_of(ptr, type, member) ({                              \</span><br><span class="line">        void *__mptr = (void *)(ptr);                                   \</span><br><span class="line">        BUILD_BUG_ON_MSG(!__same_type(*(ptr), ((type *)0)-&gt;member) &amp;&amp;   \</span><br><span class="line">                         !__same_type(*(ptr), void),                    \</span><br><span class="line">                         "pointer type mismatch in container_of()");    \</span><br><span class="line">        ((type *)(__mptr - offsetof(type, member))); })</span><br></pre></td></tr></tbody></table></figure>
+
+<p>The <strong>offsetof</strong> is defined as:</p>
+<figure class="highlight plaintext hljs"><table><tbody><tr><td class="code"><pre><span class="line">#undef offsetof</span><br><span class="line">#ifdef __compiler_offsetof</span><br><span class="line">#define offsetof(TYPE, MEMBER)  __compiler_offsetof(TYPE, MEMBER)</span><br><span class="line">#else</span><br><span class="line">#define offsetof(TYPE, MEMBER)  ((size_t)&amp;((TYPE *)0)-&gt;MEMBER)</span><br><span class="line">#endif</span><br></pre></td></tr></tbody></table></figure>
+
+<p><strong>container_of</strong>宏可以把一个结构体成员变量的指针转成该结构体的指针，为了了解它是怎么实现的，首先需要知道结构体在内存中的布局：</p>
+<p><img src="/layout.png" alt="layout"></p>
+<p>首先无论是在栈或者堆上，结构体占用一段连续的内存，内部的成员依次排布（考虑 padding），例如：</p>
+<figure class="highlight plaintext hljs"><table><tbody><tr><td class="code"><pre><span class="line">stuct ST</span><br><span class="line">{</span><br><span class="line">	int a;</span><br><span class="line">	char b;</span><br><span class="line">	int c;</span><br><span class="line">};</span><br></pre></td></tr></tbody></table></figure>
+
+<p>在 32 位机器上，按 4 字节对齐，结构体 ST 一共占用 12 字节，其中 a 占用 4 个字节，b 占用 1 个字节，后面有三个字节作为对齐，c 也同样占用 4 个字节。</p>
+<p>其次，结构体的起始地址和第一个成员变量的起始地址一致，所以在下面的代码里&amp;s == &amp;s.a:</p>
+<figure class="highlight plaintext hljs"><table><tbody><tr><td class="code"><pre><span class="line">struct ST s = { 0 };</span><br><span class="line">printf("s is at %p", &amp;s);</span><br><span class="line">printf("a is at %p", &amp;s.a);</span><br></pre></td></tr></tbody></table></figure>
+
+<p>所以基于上面的结论，通过结构体成员的地址，推算出结构体的起始地址就不难了，只需要知道该成员在结构体中的偏移量就可以了，而偏移量其实就如前面说明的，在编译阶段，或者说编译器就可以知道。</p>
+<p>计算偏移量是通过<strong>offsetof</strong>宏来实现的，来看具体的代码：</p>
+<figure class="highlight plaintext hljs"><table><tbody><tr><td class="code"><pre><span class="line">#undef offsetof</span><br><span class="line">#ifdef __compiler_offsetof</span><br><span class="line">#define offsetof(TYPE, MEMBER)  __compiler_offsetof(TYPE, MEMBER)</span><br><span class="line">#else</span><br><span class="line">#define offsetof(TYPE, MEMBER)  ((size_t)&amp;((TYPE *)0)-&gt;MEMBER)</span><br><span class="line">#endif</span><br></pre></td></tr></tbody></table></figure>
+<p>首先检查如果有编译器内置的方法__compiler_offsetof就直接调用，否则就模拟一个从0地址开始的结构体，得到成员变量的地址，因为偏移量就是成员变量的地址减去起始地址，而这个方法的精妙就在于把起始地址设置成了0，所以成员变量的地址就是该成员在结构体内部的偏移量。打个比方，用尺子量东西的长度，通常把起始点对准尺子的零刻度，这样另一端对准的尺子刻度就是该物体的长度。</p>
+<p>最后，另外一个条件是，结构体的内存布局是从低地址到高地址的，换句话说，偏移量总为正。</p>
+<p>OK，然后看<strong>container_of</strong>的实现</p>
+<figure class="highlight plaintext hljs"><table><tbody><tr><td class="code"><pre><span class="line">void *__mptr = (void *)(ptr);                                   \</span><br><span class="line">BUILD_BUG_ON_MSG(!__same_type(*(ptr), ((type *)0)-&gt;member) &amp;&amp;   \</span><br><span class="line">                 !__same_type(*(ptr), void),                    \</span><br><span class="line">                 "pointer type mismatch in container_of()");    \</span><br></pre></td></tr></tbody></table></figure>
+<p>首先内部声明一个__mptr来指向传入的ptr，接着做了一个类型检查，确保ptr和对应的成员变量类型一致，或者ptr兼容void类型（？），这两步只是预备工作。关键的在最后一步：</p>
+<figure class="highlight plaintext hljs"><table><tbody><tr><td class="code"><pre><span class="line">((type *)(__mptr - offsetof(type, member))); })</span><br></pre></td></tr></tbody></table></figure>
+<p>offsetof宏会计算成员member在结构体里的偏移量，然后结构体成员的指针减去偏移量，就得到了结构体的指针。</p>
+<p>总结下，<strong>container_of</strong>的实现依赖了下面三点：</p>
+<ul>
+<li>结构体在内存中的存放布局是连续的</li>
+<li>结构体的起始地址和第一个成员变量的地址是一致的（编译器没有添加额外的信息在里面）</li>
+<li>结构体的布局是从低地址到高地址增长的，偏移量为正</li>
+</ul>
+<p>Reference:</p>
+<ol>
+<li><a target="_blank" rel="noopener" href="https://gcc.gnu.org/onlinedocs/gcc/Statement-Exprs.html#Statement-Exprs">Statement</a></li>
+<li><a target="_blank" rel="noopener" href="https://gcc.gnu.org/onlinedocs/gcc/Typeof.html">Typeof</a></li>
+</ol>
+</body></html>
+    
+    </div>
+    
+    <div class="columns is-variable is-1 is-multiline is-mobile">
+    
+        <span class="column is-narrow"><a class="tag is-light article-tag" href="/tags/kernel/">#kernel</a></span>
+    
+    </div>
+    
+    
+    <div class="columns is-mobile is-multiline article-nav">
+        <span class="column is-12-mobile is-half-desktop  article-nav-prev">
+            
+            <a href="/2023/03/03/time/"></a>
+            
+        </span>
+        <span class="column is-12-mobile is-half-desktop  article-nav-next">
+            
+            <a href="/2022/02/10/Copy-a-Git-repo-to-a-new-one/">Copy a Git repo to a new one</a>
+            
+        </span>
+    </div>
+    
+</article>
+
+
+
+
+    </div>
+</section>
+    <footer class="footer">
+    <div class="container">
+        <div class="columns content">
+            <div class="column is-narrow has-text-centered">
+                &copy; 2023 Hermes Zhang&nbsp;
+                Powered by <a href="http://hexo.io/" target="_blank">Hexo</a> & <a
+                        target="_blank" rel="noopener" href="http://github.com/ppoffice/hexo-theme-minos">Minos</a>
+            </div>
+            <div class="column is-hidden-mobile"></div>
+
+            
+            
+        </div>
+    </div>
+</footer>
+    <script src="//cdnjs.cloudflare.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/moment.js/2.22.2/moment-with-locales.min.js"></script>
+
+<!-- test if the browser is outdated -->
+<div id="outdated">
+    <h6>Your browser is out-of-date!</h6>
+    <p>Update your browser to view this website correctly. <a id="btnUpdateBrowser" target="_blank" rel="noopener" href="http://outdatedbrowser.com/">Update my browser now </a></p>
+    <p class="last"><a href="#" id="btnCloseUpdateBrowser" title="Close">&times;</a></p>
+</div>
+<script src="//cdnjs.cloudflare.com/ajax/libs/outdated-browser/1.1.5/outdatedbrowser.min.js"></script>
+<script>
+    $(document).ready(function () {
+        // plugin function, place inside DOM ready function
+        outdatedBrowser({
+            bgColor: '#f25648',
+            color: '#ffffff',
+            lowerThan: 'flex'
+        })
+    });
+</script>
+
+<script>
+    window.FontAwesomeConfig = {
+        searchPseudoElements: true
+    }
+    moment.locale("en-AU");
+</script>
+
+
+
+
+<script src="/js/script.js"></script>
+
+
+    
+</body>
+</html>

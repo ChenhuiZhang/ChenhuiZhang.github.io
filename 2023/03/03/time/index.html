@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html class="has-navbar-fixed-top">
+<head>
+    <meta charset="utf-8">
+<title>天如洗 笙歌起</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+
+<link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/outdated-browser/1.1.5/outdatedbrowser.min.css">
+
+
+
+
+<meta name="description" content="">
+
+
+
+
+
+
+
+
+
+
+<link rel="stylesheet" href="//fonts.googleapis.com/css?family=Ovo|Source+Code+Pro">
+<link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/bulma/0.6.2/css/bulma.min.css">
+
+
+<link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/lightgallery/1.6.8/css/lightgallery.min.css">
+<link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/justifiedGallery/3.6.5/css/justifiedGallery.min.css">
+
+
+<link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/atom-one-light.min.css">
+
+
+<link rel="stylesheet" href="/css/style.css">
+
+
+<script defer src="//use.fontawesome.com/releases/v5.0.8/js/all.js"></script>
+
+
+
+<meta name="generator" content="Hexo 6.3.0"></head>
+<body>
+    
+<nav class="navbar is-transparent is-fixed-top navbar-main" role="navigation" aria-label="main navigation">
+    <div class="container">
+        <div class="navbar-brand">
+            <a class="navbar-item navbar-logo" href="/">
+                
+                <img src="/images/logo.png" alt="" height="28">
+                
+            </a>
+            <div class="navbar-burger">
+                <span></span>
+                <span></span>
+                <span></span>
+            </div>
+        </div>
+        
+        <div class="navbar-menu navbar-end">
+            
+            
+            
+        </div>
+    </div>
+</nav>
+
+    <section class="section">
+    <div class="container">
+    <article class="article content gallery" itemscope itemprop="blogPost">
+    <h1 class="article-title is-size-3 is-size-4-mobile" itemprop="name">
+        
+            
+        
+    </h1>
+    <div class="article-meta columns is-variable is-1 is-multiline is-mobile is-size-7-mobile">
+        <span class="column is-narrow">
+            
+                <time datetime="2023-03-03T06:11:15.922Z" itemprop="datePublished">Mar 3 2023</time>
+            
+        </span>
+        
+        
+        <span class="column is-narrow">
+            
+            
+            19 minutes read (About 2911 words)
+        </span>
+        
+    </div>
+    <div class="article-entry is-size-6-mobile" itemprop="articleBody">
+    
+        <html><head></head><body><h1 id="RTC，系统时间，NTP"><a href="#RTC，系统时间，NTP" class="headerlink" title="RTC，系统时间，NTP"></a>RTC，系统时间，NTP</h1><p>最近遇到一个 RTC 同步的问题，记录下并梳理下具体同步的流程：通常情况下，操作系统启动后，会首先从 RTC 读取时间，这时的系统时间完全来自于 RTC 芯片；如果后续开启了 NTP 服务，系统里的 NTP 服务会和网络上的 NTP 服务器进行时间校准（一般会持续几分钟），一旦系统时间和 NTP 服务器时间同步完成后，操作系统会把当前的系统时间写回 RTC 芯片，并且在随后的时间里，定期的（Linux 上每隔 11 分钟）将系统时间写回 RTC。</p>
+<p>这里涉及到三条时间轴，RTC，系统时间和 NTP， 我们假设 NTP 的时间线是标准的，那他们三者之间同步的话，一般依赖于以下几个因素：</p>
+<span id="more"></span>
+
+<ul>
+<li>每个时间数据能够提供的精度</li>
+<li>每个时间线自身的误差</li>
+<li>同步操作的时延</li>
+</ul>
+<p>能提供的精度，系统时间和 NTP 可以认为是足够的，单位一般为纳秒，精确度则基本在毫秒级。短板是 RTC 芯片，通常的 RTC 芯片提供的接口只能到秒，所以无论读取还是写入，都只能到秒，毫秒的数值完全被忽略了。</p>
+<p>时间线自身的误差，RTC 依赖于芯片的晶振，通常情况下是满足需求的（具体误差可以参看芯片手册），系统时间的误差同样依赖于主芯片的晶振，NTP 服务器的话同样类似。</p>
+<p>考虑同步操作的时延，NTP 和系统之间通常是通过网络，这部分虽然时延很大并且波动大，但 NTP 协议本身就已经考虑到并通过算法补偿掉了；RTC 和系统时间的同步通常通过 i2c 协议进行传输，一般可以忽略。</p>
+<p>所以整体来看，影响整体系统精度的最大短板就在于 RTC 能提供的精度，即使系统的时间精度很高，但写入 RTC 时，只能写到秒一级的数据，产生的误差一下子就有+/- 500ms 之多，同样道理，即使 RTC 本身的晶振精度很高，但系统刚起来去读时间的话，也只能读到秒，后面的毫秒数据完全没有，相当于又是- 1000ms 的误差。</p>
+<p>所以如果想尽量让三者同步过程中保证获得一个高精度的数据，操作系统需要通过额外的一系列措施来实现，下面就通过代码梳理下系统是如何尽量补偿掉这个误差的。</p>
+<p>涉及到的代码如下：</p>
+<ul>
+<li>openntpd-6.2p3</li>
+</ul>
+<ul>
+<li>linux-4.19</li>
+</ul>
+<h2 id="NTP-gt-系统时间-gt-RTC"><a href="#NTP-gt-系统时间-gt-RTC" class="headerlink" title="NTP->系统时间->RTC"></a>NTP-&gt;系统时间-&gt;RTC</h2><p>首先当 ntpd 服务完成时间调整时，会把 synced 标志设置为 1：</p>
+<figure class="highlight c hljs"><table><tbody><tr><td class="code"><pre><span class="line"><span class="hljs-type">int</span></span><br><span class="line"><span class="title function_">ntpd_adjtime</span><span class="hljs-params">(<span class="hljs-type">double</span> d)</span></span><br><span class="line">{</span><br><span class="line">  <span class="hljs-class"><span class="hljs-keyword">struct</span> <span class="hljs-title">timeval</span>  <span class="hljs-title">tv</span>, <span class="hljs-title">olddelta</span>;</span></span><br><span class="line">  <span class="hljs-type">int</span>   synced = <span class="hljs-number">0</span>;</span><br><span class="line">  <span class="hljs-type">static</span> <span class="hljs-type">int</span>  firstadj = <span class="hljs-number">1</span>;</span><br><span class="line"></span><br><span class="line">  d += getoffset();</span><br><span class="line">  <span class="hljs-keyword">if</span> (d &gt;= (<span class="hljs-type">double</span>)LOG_NEGLIGIBLE_ADJTIME / <span class="hljs-number">1000</span> ||</span><br><span class="line">      d &lt;= <span class="hljs-number">-1</span> * (<span class="hljs-type">double</span>)LOG_NEGLIGIBLE_ADJTIME / <span class="hljs-number">1000</span>)</span><br><span class="line">    log_info(<span class="hljs-string">"adjusting local clock. The current time diff is now %fs"</span>, d);</span><br><span class="line">  <span class="hljs-keyword">else</span></span><br><span class="line">    log_debug(<span class="hljs-string">"adjusting local clock. The current time diff is now %fs"</span>, d);</span><br><span class="line">  d_to_tv(d, &amp;tv);</span><br><span class="line">  <span class="hljs-keyword">if</span> (adjtime(&amp;tv, &amp;olddelta) == <span class="hljs-number">-1</span>)</span><br><span class="line">    log_warn(<span class="hljs-string">"adjtime failed"</span>);</span><br><span class="line">  <span class="hljs-keyword">else</span> <span class="hljs-keyword">if</span> (!firstadj &amp;&amp; olddelta.tv_sec == <span class="hljs-number">0</span> &amp;&amp; olddelta.tv_usec == <span class="hljs-number">0</span>)</span><br><span class="line">    synced = <span class="hljs-number">1</span>;</span><br><span class="line">  firstadj = <span class="hljs-number">0</span>;</span><br><span class="line">  update_time_sync_status(synced);</span><br><span class="line">  <span class="hljs-keyword">return</span> (synced);</span><br><span class="line">}</span><br></pre></td></tr></tbody></table></figure>
+
+<p>update_time_sync_status()会通过系统调用 adjtimex()把时间设置到 kernel 里：</p>
+<figure class="highlight c hljs"><table><tbody><tr><td class="code"><pre><span class="line"><span class="hljs-type">void</span></span><br><span class="line"><span class="title function_">update_time_sync_status</span><span class="hljs-params">(<span class="hljs-type">int</span> synced)</span></span><br><span class="line">{</span><br><span class="line">        <span class="hljs-class"><span class="hljs-keyword">struct</span> <span class="hljs-title">timex</span> <span class="hljs-title">txc</span> =</span> { <span class="hljs-number">0</span> };</span><br><span class="line"></span><br><span class="line">        txc.modes = MOD_STATUS;</span><br><span class="line">        <span class="hljs-keyword">if</span> (synced) {</span><br><span class="line">                txc.modes |= MOD_MAXERROR;</span><br><span class="line">                txc.maxerror = <span class="hljs-number">0</span>;</span><br><span class="line">        } <span class="hljs-keyword">else</span></span><br><span class="line">                txc.status = STA_UNSYNC;</span><br><span class="line">        <span class="hljs-keyword">if</span> (adjtimex(&amp;txc) == <span class="hljs-number">-1</span>)</span><br><span class="line">                log_warn(<span class="hljs-string">"ntp_adjtime (3) failed"</span>);</span><br><span class="line">        <span class="hljs-keyword">return</span>;</span><br><span class="line">}</span><br></pre></td></tr></tbody></table></figure>
+
+<figure class="highlight c hljs"><table><tbody><tr><td class="code"><pre><span class="line"><span class="hljs-type">int</span> <span class="title function_">do_adjtimex</span><span class="hljs-params">(<span class="hljs-keyword">struct</span> timex *txc)</span></span><br><span class="line">{</span><br><span class="line"></span><br><span class="line">   	... ...</span><br><span class="line"></span><br><span class="line">  ntp_notify_cmos_timer();</span><br><span class="line"></span><br><span class="line">  <span class="hljs-keyword">return</span> ret;</span><br><span class="line">}</span><br><span class="line"></span><br><span class="line"><span class="hljs-type">void</span> <span class="title function_">ntp_notify_cmos_timer</span><span class="hljs-params">(<span class="hljs-type">void</span>)</span></span><br><span class="line">{</span><br><span class="line">  <span class="hljs-keyword">if</span> (!ntp_synced()) <span class="hljs-comment">// 此处会check STA_UNSYNC标志</span></span><br><span class="line">    <span class="hljs-keyword">return</span>;</span><br><span class="line"></span><br><span class="line">  <span class="hljs-keyword">if</span> (IS_ENABLED(CONFIG_GENERIC_CMOS_UPDATE) ||</span><br><span class="line">      IS_ENABLED(CONFIG_RTC_SYSTOHC))</span><br><span class="line">    queue_delayed_work(system_power_efficient_wq, &amp;sync_work, <span class="hljs-number">0</span>);</span><br><span class="line">}</span><br><span class="line"></span><br><span class="line"><span class="hljs-comment">/*</span></span><br><span class="line"><span class="hljs-comment"> * If we have an externally synchronized Linux clock, then update RTC clock</span></span><br><span class="line"><span class="hljs-comment"> * accordingly every ~11 minutes. Generally RTCs can only store second</span></span><br><span class="line"><span class="hljs-comment"> * precision, but many RTCs will adjust the phase of their second tick to</span></span><br><span class="line"><span class="hljs-comment"> * match the moment of update. This infrastructure arranges to call to the RTC</span></span><br><span class="line"><span class="hljs-comment"> * set at the correct moment to phase synchronize the RTC second tick over</span></span><br><span class="line"><span class="hljs-comment"> * with the kernel clock.</span></span><br><span class="line"><span class="hljs-comment"> */</span></span><br><span class="line"><span class="hljs-type">static</span> <span class="hljs-type">void</span> <span class="title function_">sync_hw_clock</span><span class="hljs-params">(<span class="hljs-keyword">struct</span> work_struct *work)</span></span><br><span class="line">{</span><br><span class="line"></span><br><span class="line">  <span class="hljs-keyword">if</span> (!ntp_synced())</span><br><span class="line">    <span class="hljs-keyword">return</span>;</span><br><span class="line"></span><br><span class="line">  <span class="hljs-keyword">if</span> (sync_cmos_clock())</span><br><span class="line">    <span class="hljs-keyword">return</span>;</span><br><span class="line"></span><br><span class="line">  sync_rtc_clock();</span><br><span class="line">}</span><br><span class="line"></span><br></pre></td></tr></tbody></table></figure>
+
+<p>在 do_adjtimex()最后，会调用 ntp_notify_cmos_timer()，在 ntp_notify_cmos_timer()里 kernel 会启动一个 工作队列，并进入 sync_rtc_clock()</p>
+<figure class="highlight c hljs"><table><tbody><tr><td class="code"><pre><span class="line"><span class="hljs-type">static</span> <span class="hljs-type">void</span> <span class="title function_">sync_rtc_clock</span><span class="hljs-params">(<span class="hljs-type">void</span>)</span></span><br><span class="line">{</span><br><span class="line">  <span class="hljs-type">unsigned</span> <span class="hljs-type">long</span> target_nsec;</span><br><span class="line">  <span class="hljs-class"><span class="hljs-keyword">struct</span> <span class="hljs-title">timespec64</span> <span class="hljs-title">adjust</span>, <span class="hljs-title">now</span>;</span></span><br><span class="line">  <span class="hljs-type">int</span> rc;</span><br><span class="line"></span><br><span class="line">  <span class="hljs-keyword">if</span> (!IS_ENABLED(CONFIG_RTC_SYSTOHC))</span><br><span class="line">    <span class="hljs-keyword">return</span>;</span><br><span class="line"></span><br><span class="line">  getnstimeofday64(&amp;now);</span><br><span class="line"></span><br><span class="line">  adjust = now;</span><br><span class="line">  <span class="hljs-keyword">if</span> (persistent_clock_is_local)</span><br><span class="line">    adjust.tv_sec -= (sys_tz.tz_minuteswest * <span class="hljs-number">60</span>);</span><br><span class="line"></span><br><span class="line">  <span class="hljs-comment">/*</span></span><br><span class="line"><span class="hljs-comment">   * The current RTC in use will provide the target_nsec it wants to be</span></span><br><span class="line"><span class="hljs-comment">   * called at, and does rtc_tv_nsec_ok internally.</span></span><br><span class="line"><span class="hljs-comment">   */</span></span><br><span class="line">  rc = rtc_set_ntp_time(adjust, &amp;target_nsec); <span class="hljs-comment">//这里第一次写入RTC，然后根据返回值rc来决定下一次同步的间隔</span></span><br><span class="line">  <span class="hljs-keyword">if</span> (rc == -ENODEV)</span><br><span class="line">    <span class="hljs-keyword">return</span>;</span><br><span class="line"></span><br><span class="line">  sched_sync_hw_clock(now, target_nsec, rc);</span><br><span class="line">}</span><br></pre></td></tr></tbody></table></figure>
+
+<p>这里就涉及到之前提到的写入 RTC 产生的误差，kernel 会在这里做一个补偿，主要是通过多次写入来逼近。举例说明：假设系统获取到的当前时间为 m 秒 n 毫秒，第一次写入 RTC 时，只能先写入 m 秒，然后 kernel 计算出下一次写入的时间点是距离下一个整秒（m+1）的时间（1000 - n）毫秒，并通过定时器去触发下一次的写入操作。这样 1000-n 毫秒后，系统再一次去同步 RTC 时间，并写入 m+1 秒。这样 RTC 和系统的时间基本就到达一致了。</p>
+<p>当然由于系统自身的误差（包括 CPU 调度的影响），有可能定时器触发的不是那么的精确，所以有可能需要再下一秒的同步，去设定时间（m+2）秒，通过这样不断的去逼近一个整秒的瞬间来对 RTC 进行同步。</p>
+<figure class="highlight c hljs"><table><tbody><tr><td class="code"><pre><span class="line"><span class="hljs-type">static</span> <span class="hljs-type">void</span> <span class="title function_">sched_sync_hw_clock</span><span class="hljs-params">(<span class="hljs-keyword">struct</span> timespec64 now,</span></span><br><span class="line"><span class="hljs-params">        <span class="hljs-type">unsigned</span> <span class="hljs-type">long</span> target_nsec, <span class="hljs-type">bool</span> fail)</span></span><br><span class="line"></span><br><span class="line">{</span><br><span class="line">  <span class="hljs-class"><span class="hljs-keyword">struct</span> <span class="hljs-title">timespec64</span> <span class="hljs-title">next</span>;</span></span><br><span class="line"></span><br><span class="line">  getnstimeofday64(&amp;next);</span><br><span class="line">  <span class="hljs-keyword">if</span> (!fail)</span><br><span class="line">    next.tv_sec = <span class="hljs-number">659</span>;</span><br><span class="line">  <span class="hljs-keyword">else</span> {</span><br><span class="line">    <span class="hljs-comment">/*</span></span><br><span class="line"><span class="hljs-comment">     * Try again as soon as possible. Delaying long periods</span></span><br><span class="line"><span class="hljs-comment">     * decreases the accuracy of the work queue timer. Due to this</span></span><br><span class="line"><span class="hljs-comment">     * the algorithm is very likely to require a short-sleep retry</span></span><br><span class="line"><span class="hljs-comment">     * after the above long sleep to synchronize ts_nsec.</span></span><br><span class="line"><span class="hljs-comment">     */</span></span><br><span class="line">    next.tv_sec = <span class="hljs-number">0</span>;</span><br><span class="line">  }</span><br><span class="line"></span><br><span class="line">  <span class="hljs-comment">/* Compute the needed delay that will get to tv_nsec == target_nsec */</span></span><br><span class="line">  next.tv_nsec = target_nsec - next.tv_nsec;</span><br><span class="line">  <span class="hljs-keyword">if</span> (next.tv_nsec &lt;= <span class="hljs-number">0</span>)</span><br><span class="line">    next.tv_nsec += NSEC_PER_SEC;</span><br><span class="line">  <span class="hljs-keyword">if</span> (next.tv_nsec &gt;= NSEC_PER_SEC) {</span><br><span class="line">    next.tv_sec++;</span><br><span class="line">    next.tv_nsec -= NSEC_PER_SEC;</span><br><span class="line">  }</span><br><span class="line"></span><br><span class="line">  queue_delayed_work(system_power_efficient_wq, &amp;sync_work,</span><br><span class="line">         timespec64_to_jiffies(&amp;next));</span><br><span class="line">}</span><br></pre></td></tr></tbody></table></figure>
+
+<p>还有一点每次写入 RTC 之前，kernel 会比较当前时间是不是已经非常接近一个整秒，</p>
+<figure class="highlight c hljs"><table><tbody><tr><td class="code"><pre><span class="line"><span class="hljs-comment">/* The ntp code must call this with the correct value in tv_nsec, if</span></span><br><span class="line"><span class="hljs-comment"> * it does not we update target_nsec and return EPROTO to make the ntp</span></span><br><span class="line"><span class="hljs-comment"> * code try again later.</span></span><br><span class="line"><span class="hljs-comment"> */</span></span><br><span class="line">ok = rtc_tv_nsec_ok(rtc-&gt;set_offset_nsec, &amp;to_set, &amp;now);</span><br><span class="line"><span class="hljs-keyword">if</span> (!ok) {</span><br><span class="line">  err = -EPROTO;</span><br><span class="line">  <span class="hljs-keyword">goto</span> out_close;</span><br><span class="line">}</span><br><span class="line"></span><br></pre></td></tr></tbody></table></figure>
+
+<p>rtc_tv_nsec_ok()会 check 当前时间（now）的 tv_nsec 是不是等于 rtc-&gt;set_offset_nsec+/-FUZZ</p>
+<figure class="highlight c hljs"><table><tbody><tr><td class="code"><pre><span class="line"><span class="hljs-comment">/* Allowed error in tv_nsec, arbitarily set to 5 jiffies in ns. */</span></span><br><span class="line"><span class="hljs-type">const</span> <span class="hljs-type">unsigned</span> <span class="hljs-type">long</span> TIME_SET_NSEC_FUZZ = TICK_NSEC * <span class="hljs-number">5</span>;</span><br></pre></td></tr></tbody></table></figure>
+
+<p>如果满足误差范围，并且写入 RTC 成功，这一次的同步就完成了。kernel 会把下一次同步设定在 11 分钟后。</p>
+<p>另一个需要注意的是，上面说的整秒其实不是默认行为，4.19 kernel 里的 rtc-&gt;set_offset_nsec，对应的就是想在哪个时间点同步 RTC，默认 rtc 驱动里设置为半秒，如果想做到整秒的同步，需要在驱动里把它改为 0。</p>
+<h2 id="RTC-gt-系统时间"><a href="#RTC-gt-系统时间" class="headerlink" title="RTC->系统时间"></a>RTC-&gt;系统时间</h2><p>反过来，当系统从断电状态启动时，kernel 会从 RTC 里读取时间，并作为系统时间。如果系统运行中没有网络或者没有 enable NTP 服务，那系统时间的精度完全依赖于从 RTC 里读取的时间。但不幸的是，读取 RTC 一般也只能读到秒，所以默认情况下，系统获取的时间都是不精确的。</p>
+<figure class="highlight c hljs"><table><tbody><tr><td class="code"><pre><span class="line"><span class="hljs-comment">/* IMPORTANT: the RTC only stores whole seconds. It is arbitrary</span></span><br><span class="line"><span class="hljs-comment"> * whether it stores the most close value or the value with partial</span></span><br><span class="line"><span class="hljs-comment"> * seconds truncated. However, it is important that we use it to store</span></span><br><span class="line"><span class="hljs-comment"> * the truncated value. This is because otherwise it is necessary,</span></span><br><span class="line"><span class="hljs-comment"> * in an rtc sync function, to read both xtime.tv_sec and</span></span><br><span class="line"><span class="hljs-comment"> * xtime.tv_nsec. On some processors (i.e. ARM), an atomic read</span></span><br><span class="line"><span class="hljs-comment"> * of &gt;32bits is not possible. So storing the most close value would</span></span><br><span class="line"><span class="hljs-comment"> * slow down the sync API. So here we have the truncated value and</span></span><br><span class="line"><span class="hljs-comment"> * the best guess is to add 0.5s.</span></span><br><span class="line"><span class="hljs-comment"> */</span></span><br><span class="line"></span><br><span class="line"><span class="hljs-type">static</span> <span class="hljs-type">int</span> __init <span class="title function_">rtc_hctosys</span><span class="hljs-params">(<span class="hljs-type">void</span>)</span></span><br><span class="line">{</span><br><span class="line">	<span class="hljs-type">int</span> err = -ENODEV;</span><br><span class="line">	<span class="hljs-class"><span class="hljs-keyword">struct</span> <span class="hljs-title">rtc_time</span> <span class="hljs-title">tm</span>;</span></span><br><span class="line">	<span class="hljs-class"><span class="hljs-keyword">struct</span> <span class="hljs-title">timespec64</span> <span class="hljs-title">tv64</span> =</span> {</span><br><span class="line">		.tv_nsec = NSEC_PER_SEC &gt;&gt; <span class="hljs-number">1</span>,</span><br><span class="line">	};</span><br><span class="line">	<span class="hljs-class"><span class="hljs-keyword">struct</span> <span class="hljs-title">rtc_device</span> *<span class="hljs-title">rtc</span> =</span> rtc_class_open(CONFIG_RTC_HCTOSYS_DEVICE);</span><br><span class="line"></span><br><span class="line">	<span class="hljs-keyword">if</span> (rtc == <span class="hljs-literal">NULL</span>) {</span><br><span class="line">		pr_info(<span class="hljs-string">"unable to open rtc device (%s)\n"</span>,</span><br><span class="line">			CONFIG_RTC_HCTOSYS_DEVICE);</span><br><span class="line">		<span class="hljs-keyword">goto</span> err_open;</span><br><span class="line">	}</span><br><span class="line"></span><br><span class="line">	err = rtc_read_time(rtc, &amp;tm);</span><br><span class="line">	<span class="hljs-keyword">if</span> (err) {</span><br><span class="line">		dev_err(rtc-&gt;dev.parent,</span><br><span class="line">			<span class="hljs-string">"hctosys: unable to read the hardware clock\n"</span>);</span><br><span class="line">		<span class="hljs-keyword">goto</span> err_read;</span><br><span class="line"></span><br><span class="line">	}</span><br><span class="line"></span><br><span class="line">	tv64.tv_sec = rtc_tm_to_time64(&amp;tm);</span><br><span class="line"></span><br><span class="line"><span class="hljs-meta">#<span class="hljs-keyword">if</span> BITS_PER_LONG == 32</span></span><br><span class="line">	<span class="hljs-keyword">if</span> (tv64.tv_sec &gt; INT_MAX) {</span><br><span class="line">		err = -ERANGE;</span><br><span class="line">		<span class="hljs-keyword">goto</span> err_read;</span><br><span class="line">	}</span><br><span class="line"><span class="hljs-meta">#<span class="hljs-keyword">endif</span></span></span><br><span class="line"></span><br><span class="line">	err = do_settimeofday64(&amp;tv64);</span><br><span class="line"></span><br><span class="line">	dev_info(rtc-&gt;dev.parent,</span><br><span class="line">		<span class="hljs-string">"setting system clock to "</span></span><br><span class="line">		<span class="hljs-string">"%d-%02d-%02d %02d:%02d:%02d UTC (%lld)\n"</span>,</span><br><span class="line">		tm.tm_year + <span class="hljs-number">1900</span>, tm.tm_mon + <span class="hljs-number">1</span>, tm.tm_mday,</span><br><span class="line">		tm.tm_hour, tm.tm_min, tm.tm_sec,</span><br><span class="line">		(<span class="hljs-type">long</span> <span class="hljs-type">long</span>) tv64.tv_sec);</span><br><span class="line"></span><br><span class="line">err_read:</span><br><span class="line">	rtc_class_close(rtc);</span><br><span class="line"></span><br><span class="line">err_open:</span><br><span class="line">	rtc_hctosys_ret = err;</span><br><span class="line"></span><br><span class="line">	<span class="hljs-keyword">return</span> err;</span><br><span class="line">}</span><br></pre></td></tr></tbody></table></figure>
+
+<p>如上面代码里的那样，kernel 会默认填充 nsec 为半秒，也就是 500ms，所以系统时间在同步完后，已经有了+/- 500ms 的偏差。</p>
+<p>如果未了同步时获得更高精度的时间，就需要额外的步骤来实现，通常有下面两种方法：</p>
+<ol>
+<li>类似 kernel 同步 RTC 时，采用不断逼近写入时间的方法，在我们从 RTC 读取时间时，我们也可以通过以固定的一个间隔来读取 RTC 时间，例如，假设我们间隔设为 d ms， 第一次读取时我们得到的时间是 T 秒，然后等待 d ms，再次读取 RTC，如果还是 T 秒，重复上述循环；如果读到 T+1 秒，那就退出循环，并立即同步系统时间为 T+1 秒，这样同步下来的精度可以达到 d ms （当然理论上需要加上系统定时器的精度）。</li>
+<li>通过利用 RTC 芯片上的中断管脚，有些 RTC 芯片的中断管脚上可以产生一个以 1 秒作为周期中断信号，这样 kernel 里可以在第一个中断到来时，读取下 RTC 时间，记为 T 秒，然后等到下一个中断到来时，立即同步系统时间为 T+1 秒（采用两个中断主要是规避读取 RTC 带来的一些耗时），这样同步的结果可以达到比较高的精度。</li>
+</ol>
+<h2 id="附录"><a href="#附录" class="headerlink" title="附录"></a>附录</h2><p>下面是一次完整的系统从 NTP 同步，到系统同步到 RTC 的过程</p>
+<figure class="highlight plaintext hljs"><table><tbody><tr><td class="code"><pre><span class="line">May 27 09:42:14  systemd[1]: Started Network time.</span><br><span class="line">May 27 09:42:14  kernel: do_adjtimex ...</span><br><span class="line">May 27 09:42:14  kernel: do_adjtimex ...</span><br><span class="line">May 27 09:42:14  ntpd[868]: ntp engine ready</span><br><span class="line">May 27 09:42:14  kernel: do_adjtimex ...</span><br><span class="line">May 27 09:42:15  kernel: do_adjtimex ...</span><br><span class="line">May 27 09:42:15  ntpd[867]: set local clock to Thu May 27 09:42:15 UTC 2021 (offset 0.027322s)</span><br><span class="line">May 27 09:42:22  kernel: do_adjtimex ...</span><br><span class="line">May 27 09:42:22  kernel: do_adjtimex ...</span><br><span class="line">May 27 09:42:31  kernel: do_adjtimex ...</span><br><span class="line">May 27 09:42:31  kernel: do_adjtimex ...</span><br><span class="line">May 27 09:42:37  kernel: do_adjtimex ...</span><br><span class="line">May 27 09:42:37  ntpd[868]: peer 10.0.2.201 now valid</span><br><span class="line">May 27 09:42:37  kernel: do_adjtimex ...</span><br><span class="line">May 27 09:42:45  kernel: do_adjtimex ...</span><br><span class="line">... ...</span><br><span class="line">May 27 09:45:09  kernel: do_adjtimex ...</span><br><span class="line">May 27 09:45:39  kernel: do_adjtimex ...</span><br><span class="line">May 27 09:45:39  ntpd[868]: clock is now synced</span><br><span class="line">May 27 09:45:39  kernel: do_adjtimex ...</span><br><span class="line">May 27 09:45:39  kernel: do_adjtimex ...</span><br><span class="line">May 27 09:45:39  kernel: do_adjtimex ...</span><br><span class="line">May 27 09:45:39  kernel: do_adjtimex ...</span><br><span class="line">May 27 09:45:39  kernel: do_adjtimex ...</span><br><span class="line">May 27 09:45:39  kernel: pass ntp_synced</span><br><span class="line">May 27 09:45:39  kernel: sync_hw_clock ...</span><br><span class="line">May 27 09:45:39  kernel: write rtc time</span><br><span class="line">May 27 09:45:39  kernel: tv_nsec: 887729612 (50000000)</span><br><span class="line">May 27 09:45:39  kernel: now: 887729612, target: 0</span><br><span class="line">May 27 09:45:39  kernel: sched_sync_hw_clock 0:111891499 target 0</span><br><span class="line">May 27 09:45:40  kernel: sync_hw_clock ...</span><br><span class="line">May 27 09:45:40  kernel: write rtc time</span><br><span class="line">May 27 09:45:40  kernel: tv_nsec: 13155982 (50000000)</span><br><span class="line">May 27 09:45:40  kernel: now: 13155982, target: 0</span><br><span class="line">May 27 09:45:40  kernel: sched_sync_hw_clock 659:983555780 target 0</span><br><span class="line">May 27 09:46:12  kernel: do_adjtimex ...</span><br><span class="line">May 27 09:46:12  kernel: pass ntp_synced</span><br><span class="line">May 27 09:46:13  kernel: do_adjtimex ...</span><br><span class="line">May 27 09:46:13  kernel: pass ntp_synced</span><br><span class="line">... ...</span><br><span class="line">May 27 09:56:28  kernel: do_adjtimex ...</span><br><span class="line">May 27 09:56:28  kernel: pass ntp_synced</span><br><span class="line">May 27 09:56:44  kernel: sync_hw_clock ...</span><br><span class="line">May 27 09:56:44  kernel: write rtc time</span><br><span class="line">May 27 09:56:44  kernel: tv_nsec: 403066775 (50000000)</span><br><span class="line">May 27 09:56:44  kernel: now: 403066775, target: 0</span><br><span class="line">May 27 09:56:44  kernel: sched_sync_hw_clock 0:596448364 target 0</span><br><span class="line">May 27 09:56:45  kernel: sync_hw_clock ...</span><br><span class="line">May 27 09:56:45  kernel: write rtc time</span><br><span class="line">May 27 09:56:45  kernel: tv_nsec: 12466498 (50000000)</span><br><span class="line">May 27 09:56:45  kernel: now: 12466498, target: 0</span><br><span class="line">May 27 09:56:45  kernel: sched_sync_hw_clock 659:983911530 target 0</span><br></pre></td></tr></tbody></table></figure>
+</body></html>
+    
+    </div>
+    
+    
+    <div class="columns is-mobile is-multiline article-nav">
+        <span class="column is-12-mobile is-half-desktop  article-nav-prev">
+            
+            <a href="/2023/03/03/qemu/"></a>
+            
+        </span>
+        <span class="column is-12-mobile is-half-desktop  article-nav-next">
+            
+            <a href="/2022/04/10/container_of/">container_of探究</a>
+            
+        </span>
+    </div>
+    
+</article>
+
+
+
+
+    </div>
+</section>
+    <footer class="footer">
+    <div class="container">
+        <div class="columns content">
+            <div class="column is-narrow has-text-centered">
+                &copy; 2023 Hermes Zhang&nbsp;
+                Powered by <a href="http://hexo.io/" target="_blank">Hexo</a> & <a
+                        target="_blank" rel="noopener" href="http://github.com/ppoffice/hexo-theme-minos">Minos</a>
+            </div>
+            <div class="column is-hidden-mobile"></div>
+
+            
+            
+        </div>
+    </div>
+</footer>
+    <script src="//cdnjs.cloudflare.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+<script src="//cdnjs.cloudflare.com/ajax/libs/moment.js/2.22.2/moment-with-locales.min.js"></script>
+
+<!-- test if the browser is outdated -->
+<div id="outdated">
+    <h6>Your browser is out-of-date!</h6>
+    <p>Update your browser to view this website correctly. <a id="btnUpdateBrowser" target="_blank" rel="noopener" href="http://outdatedbrowser.com/">Update my browser now </a></p>
+    <p class="last"><a href="#" id="btnCloseUpdateBrowser" title="Close">&times;</a></p>
+</div>
+<script src="//cdnjs.cloudflare.com/ajax/libs/outdated-browser/1.1.5/outdatedbrowser.min.js"></script>
+<script>
+    $(document).ready(function () {
+        // plugin function, place inside DOM ready function
+        outdatedBrowser({
+            bgColor: '#f25648',
+            color: '#ffffff',
+            lowerThan: 'flex'
+        })
+    });
+</script>
+
+<script>
+    window.FontAwesomeConfig = {
+        searchPseudoElements: true
+    }
+    moment.locale("en-AU");
+</script>
+
+
+
+
+<script src="/js/script.js"></script>
+
+
+    
+</body>
+</html>
